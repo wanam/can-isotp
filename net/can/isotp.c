@@ -747,6 +747,10 @@ static enum hrtimer_restart isotp_tx_timer_handler(struct hrtimer *hrtimer)
 		/* we did not get any flow control frame in time */
 
 		DBG("we did not get FC frame in time.\n");
+		/* report 'communication error on send' */
+		sk->sk_err = ECOMM;
+		if (!sock_flag(sk, SOCK_DEAD))
+			sk->sk_error_report(sk);
 
 		/* reset tx state */
 		so->tx.state = ISOTP_IDLE;

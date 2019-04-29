@@ -103,6 +103,7 @@ struct can_isotp_ll_options {
 #define CAN_ISOTP_FORCE_TXSTMIN	0x080	/* ignore stmin from received FC */
 #define CAN_ISOTP_FORCE_RXSTMIN	0x100	/* ignore CFs depending on rx stmin */
 #define CAN_ISOTP_RX_EXT_ADDR	0x200	/* different rx extended addressing */
+#define CAN_ISOTP_NO_FC		0x400	/* enable no flow control mode */
 
 
 /* default values */

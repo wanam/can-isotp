@@ -467,7 +467,7 @@ static int isotp_rcv_ff(struct sock *sk, struct canfd_frame *cf, int ae)
 	if (so->rx.len + ae + off + ff_pci_sz < so->rx.ll_dl)
 		return 1;
 
-	if (so->rx.len > MAX_MSG_LENGTH) {
+	if (so->rx.len > MAX_MSG_LENGTH) { /* CAN_ISOTP_NO_FC ??? */
 		/* send FC frame with overflow status */
 		isotp_send_fc(sk, ae, ISOTP_FC_OVFLW);
 		return 1;
@@ -483,7 +483,7 @@ static int isotp_rcv_ff(struct sock *sk, struct canfd_frame *cf, int ae)
 	so->rx.state = ISOTP_WAIT_DATA;
 
 	/* no creation of flow control frames */
-	if (so->opt.flags & CAN_ISOTP_LISTEN_MODE)
+	if (so->opt.flags & (CAN_ISOTP_LISTEN_MODE | CAN_ISOTP_NO_FC))
 		return 0;
 
 	/* send our first FC frame */
@@ -725,7 +725,6 @@ static void isotp_create_fframe(struct canfd_frame *cf, struct isotp_sock *so,
 		cf->data[i] = so->tx.buf[so->tx.idx++];
 
 	so->tx.sn = 1;
-	so->tx.state = ISOTP_WAIT_FIRST_FC;
 }
 
 static enum hrtimer_restart isotp_tx_timer_handler(struct hrtimer *hrtimer)
@@ -919,9 +918,21 @@ static int isotp_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
 
 		isotp_create_fframe(cf, so, ae);
 
-		DBG("starting txtimer for fc\n");
-		/* start timeout for FC */
-		hrtimer_start(&so->txtimer, ktime_set(1,0), HRTIMER_MODE_REL_SOFT);
+		if (so->opt.flags & CAN_ISOTP_NO_FC) {
+			so->tx.state = ISOTP_SENDING;
+
+			DBG("starting txtimer for direct cf tx\n");
+			/* start initial timer for CF tx (500us) */
+			hrtimer_start(&so->txtimer, ktime_set(0,500000),
+				      HRTIMER_MODE_REL_SOFT);
+		} else {
+			so->tx.state = ISOTP_WAIT_FIRST_FC;
+
+			DBG("starting txtimer for fc\n");
+			/* start timeout for FC */
+			hrtimer_start(&so->txtimer, ktime_set(1,0),
+				      HRTIMER_MODE_REL_SOFT);
+		}
 	}
 
 	/* send the first or only CAN frame */
@@ -1154,6 +1165,10 @@ static int isotp_setsockopt(struct socket *sock, int level, int optname,
 		/* no separate rx_ext_address is given => use ext_address */
 		if (!(so->opt.flags & CAN_ISOTP_RX_EXT_ADDR))
 			so->opt.rx_ext_address = so->opt.ext_address;
+
+		/* use CAN_ISOTP_TX_STMIN value when operating without fc */
+		if (so->opt.flags & CAN_ISOTP_NO_FC)
+			so->opt.flags |= CAN_ISOTP_FORCE_TXSTMIN;
 		break;
 
 	case CAN_ISOTP_RECV_FC:
